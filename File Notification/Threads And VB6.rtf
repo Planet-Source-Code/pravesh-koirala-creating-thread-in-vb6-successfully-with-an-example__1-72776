@@ -1,0 +1,232 @@
+{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0\fnil\fcharset0 Courier New;}}
+{\*\generator Msftedit 5.41.15.1515;}\viewkind4\uc1\pard\lang1033\f0\fs20 To understand the code and other things you should have complete knowledge of API, Processes, Threads,\par
+Tls, TlsIndex, Memory, APIs( GetTlsIndex, SetTlsIndex, TlsGetValue, TlsSetValue) etc. You can get all these things if you\par
+have a MSDN library installed in your PC. Alternatively, you can visit MSDN's Website. However I have included a short \par
+introduction of TLS and its functions at the bottom of this File (Courtesy Win32 Programmer's Reference). You may want to \par
+read it first before jumping into the article below.\par
+\par
+\b BEGIN FROM HERE\par
+\b0 It is a well known fact that VB6 doesn't support threading. Just using CreateThread API won't work too.\par
+In this program I have successfully used a thread to wait until a change occurs in the specified directory. \par
+You must be confused by reading above two lines. Don't be. VB6 doesn't support threads but it just doesn't mean that we\par
+can't use it.\par
+\par
+\b WHY DOESN'T CREATETHREAD WORKS?\par
+\b0\par
+Those of you who knows what an API is, try to use the CreateThread API. Give all the parametres right and specify a \par
+PUBLIC sub procedure (It should be in the module) in the StartAddress param using Addressof operator. Next call an API\par
+(Some other visual basic statements like Str too). Surprise surprise the familiar don't send dialog appears meaning that \par
+error occured in your program. You keep getting those errors with CreateThread.\par
+\tab\tab\tab Does it mean that you will never be able to use a Thread in VB6? NAH!\par
+\par
+The problem is that VB frequently stores or retrieves values from a TLS (Thread's Local Storage). Each thread has its own\par
+TLS. VB assumes that we don't create our own thread. So, VB first allocates some memory then creates a TlsIndex and stores\par
+the created memory address in that Tlsindex. Remember, each thread when stores a value in TlsIndex then it is local to that\par
+thread. If thread 1 stores value 90 in Tlsindex 14 (by calling TlsSetValue) and thread 2 retrieves the value which is in \par
+TlsIndex 14 (by calling TlsGetValue) then it will get nothing because it was thread 1 which stored the value so it will \par
+be available for thread 1 only, however thread 2 can store any data in TlsIndex 14 and it will be available to thread 2 only.\par
+\tab\tab So VB sets the memory address for main thread only, when any other thread (created by us) tries to access the\par
+TLS from the index that VB uses for main thread then we will get 00000000. So when VB accesses a data in 00000000 then \par
+Memory Access Violation occurs and our application crashes.\par
+\tab Except this, there is one more problem which I haven't figured yet. Sometimes the crash can happen due to other reason\par
+than TLS issue. When we create many threads then VB can crash. But it only happens when we debug it. Running the compiled\par
+version of same code runs perfectly fine. As far as I think, it happens due to some stack problem.\par
+\par
+\b WHAT IS THE FIX?\par
+\b0 To make our thread work smoothly, we need to set a memory address in the TLS with the index same that VB uses while accessing\par
+data. First we need to extract the TLS index from MSVBVM60.dll. I extracted it from __vbaSetSystemError procedure. Then\par
+we need to set a Memory address in it so that it could act as a TLS. And just any memory won't work too. Its because \par
+VB just doesn't accesses the TLS only but also the contents of the TLS. A TLS contains many things and among them can be\par
+other memory addresses too. So if we do set another memory then VB will access say a memory address that it stored from the\par
+main thread in the TLS but it will get another address or perhaps 00000000. And again when it access that 00000000 Memory\par
+Access Violation occurs. So a better fix will be to store the same memory address that main thread uses. But we shall be\par
+careful to not override that memory because it can hamper the functioning of main thread as well as our thread.\par
+\par
+\b SO WILL IT WORK NOW?\par
+\b0 I am sure that a thread can be created and executed safely in VB, at least in my version of MSVBVM60.dll. But I doubt that\par
+other releases of MSVBVM60.dll will differ to a large extent than my own. Everything depends upon the address of TlsIndex.\par
+While it will be definitely different in other versions but if the __vbaSetSystemError procedure doesn't differ then\par
+it won't be a worry.\par
+\b\tab\tab But still a drawback remains in this mechanism. You can't call the TerminateThread procedure from inside\par
+the VB IDE\b0 . Doing so will result in a crash of the IDE itself. But in a executable it is fine.\tab\tab\par
+\par
+\par
+\par
+\b APPENDIX\par
+\b0\par
+\b TLS\par
+\b0 All threads of a process share the virtual address space and the global variables of that process. Sometimes it is \par
+desirable to have static storage that is local to each thread. Of course, the local variables of a thread function are \par
+local to each thread that runs the function. But when a thread invokes another function, the static or global variables \par
+used by that function store the same value for all threads. With thread local storage (TLS), one thread allocates an \par
+index that can be used by any thread of the process to store and retrieve a different value for each thread. \par
+\par
+The following is a typical TLS scenario: \par
+\par
+1.The TlsAlloc function is used during process or dynamic-link library (DLL) initialization to allocate a TLS index.\par
+ \par
+2.Each thread that needs to use the TLS index allocates dynamic storage, then uses the TlsSetValue function to associate \par
+  the index with a pointer to the dynamic storage. \par
+\par
+3.When a thread needs to access its storage, it specifies the TLS index in a call to the TlsGetValue function to \par
+  retrieve the pointer. \par
+\par
+4.Each thread frees the dynamic storage that it has associated with a TLS index when it is no longer needed. When all \par
+  threads have finished using a TLS index, the TlsFree function frees the index. \par
+\par
+The constant TLS_MINIMUM_AVAILABLE defines the minimum number of TLS indexes available in each process. This minimum \par
+is guaranteed to be at least 64 for all systems. TLS can be useful with DLLs. The DllEntryPoint function performs the \par
+initial TLS operations in the context of the process or thread the DLL is attaching to or detaching from. When the DLL\par
+attaches to a new process, the entry-point function calls TlsAlloc to allocate a TLS index for that process. When the \par
+DLL attaches to a new thread of that process, the entry-point function allocates dynamic memory for that thread and uses \par
+TlsSetValue to save private data to the index. The DLL stores the TLS index in a global variable that is private to each \par
+attached process. The functions of the DLL can use the TLS index in a call to TlsGetValue to access the private data for\par
+the calling thread. \par
+\par
+\par
+\par
+\par
+\par
+\b TLSALLOC Function\par
+\b0 The TlsAlloc function allocates a thread local storage (TLS) index. Any thread of the process can subsequently use this index to store and retrieve values that are local to the thread. \par
+\par
+DWORD TlsAlloc(VOID)\par
+\par
+\par
+Parameters\par
+\par
+This function has no parameters. \par
+\par
+Return Value\par
+\par
+If the function succeeds, the return value is a TLS index.\par
+If the function fails, the return value is 0xFFFFFFFF. To get extended error information, call GetLastError. \par
+\par
+Remarks\par
+\par
+The threads of the process can use the TLS index in subsequent calls to the TlsFree, TlsSetValue, or TlsGetValue functions.\par
+ \par
+TLS indexes are typically allocated during process or dynamic-link library (DLL) initialization. Once allocated, each \par
+thread of the process can use a TLS index to access its own TLS storage slot. To store a value in its slot, a thread \par
+specifies the index in a call to TlsSetValue. The thread specifies the same index in a subsequent call to TlsGetValue, \par
+to retrieve the stored value. \par
+\par
+TLS indexes are not valid across process boundaries. A DLL cannot assume that an index assigned in one process is valid \par
+in another process. A DLL might use TlsAlloc, TlsSetValue, TlsGetValue, and TlsFree as follows: \par
+\par
+1.When a DLL attaches to a process, the DLL uses TlsAlloc to allocate a TLS index. The DLL then allocates some dynamic\par
+  storage and uses the TLS index in a call to TlsSetValue to store the address in the TLS slot. This concludes the \par
+  per-thread initialization for the initial thread of the process. The TLS index is stored in a global or static variable\par
+  of the DLL. \par
+2.Each time the DLL attaches to a new thread of the process, the DLL allocates some dynamic storage for the new thread \par
+  and uses the TLS index in a call to TlsSetValue to store the address in the TLS slot. This concludes the per-thread \par
+  initialization for the new thread. \par
+\par
+3.Each time an initialized thread makes a DLL call requiring the data in its dynamic storage, the DLL uses the TLS index \par
+  in a call to TlsGetValue to retrieve the address of the dynamic storage for that thread. \par
+\par
+\par
+\b TLSSETVALUE\par
+\b0\par
+The TlsSetValue function stores a value in the calling thread's thread local storage (TLS) slot for a specified TLS index.\par
+Each thread of a process has its own slot for each TLS index. \par
+\par
+BOOL TlsSetValue(\par
+\par
+    DWORD  dwTlsIndex,\tab // TLS index to set value for \par
+    LPVOID  lpvTlsValue \tab // value to be stored \par
+   );\tab\par
+Parameters\par
+\par
+dwTlsIndex\par
+\par
+Specifies a TLS index that was allocated by the TlsAlloc function. \par
+\par
+lpvTlsValue\par
+\par
+Specifies the value to be stored in the calling thread's TLS slot specified by dwTlsIndex. \par
+\par
+Return Value\par
+\par
+If the function succeeds, the return value is TRUE.\par
+If the function fails, the return value is FALSE. To get extended error information, call GetLastError. \par
+\par
+Remarks\par
+\par
+TLS indexes are typically allocated by the TlsAlloc function during process or DLL initialization. Once allocated, each \par
+thread of the process can use a TLS index to access its own TLS storage slot for that index. The storage slot for each \par
+thread is initialized to NULL. A thread specifies a TLS index in a call to TlsSetValue, to store a value in its slot. \par
+The thread specifies the same index in a subsequent call to TlsGetValue, to retrieve the stored value. \par
+\par
+TlsSetValue and TlsGetValue were implemented with speed as the primary goal. These functions perform minimal parameter \par
+validation and error checking. In particular, this function succeeds if dwTlsIndex is in the range 0 through \par
+(TLS_MINIMUM_AVAILABLE - 1). It is up to the programmer to ensure that the index is valid. \par
+\par
+\par
+\par
+\par
+\b TLSGETVALUE\par
+\b0 The TlsGetValue function retrieves the value in the calling thread's thread local storage (TLS) slot for a specified \par
+TLS index. Each thread of a process has its own slot for each TLS index. \par
+\par
+LPVOID TlsGetValue(\par
+\par
+    DWORD  dwTlsIndex \tab // TLS index to retrieve value for  \par
+   );\tab\par
+\par
+Parameters\par
+dwTlsIndex\par
+Specifies a TLS index that was allocated by the TlsAlloc function. \par
+\par
+Return Value\par
+\par
+If the function succeeds, the return value is the value stored in the calling thread's TLS slot associated with the \par
+specified index.\par
+If the function fails, the return value is zero. To get extended error information, call GetLastError. \par
+Note that the data stored in a TLS slot can have a value of zero. In this case, the return value is zero and GetLastError\par
+ returns NO_ERROR. \par
+\par
+\par
+Remarks\par
+\par
+TLS indexes are typically allocated by the TlsAlloc function during process or DLL initialization. Once allocated, each \par
+thread of the process can use a TLS index to access its own TLS storage slot for that index. The storage slot for each \par
+thread is initialized to NULL. A thread specifies a TLS index in a call to TlsSetValue, to store a value in its slot. The \par
+thread specifies the same index in a subsequent call to TlsGetValue, to retrieve the stored value. \par
+\par
+TlsSetValue and TlsGetValue were implemented with speed as the primary goal. These functions perform minimal parameter \par
+validation and error checking. In particular, this function succeeds if dwTlsIndex is in the range 0 through \par
+(TLS_MINIMUM_AVAILABLE - 1). It is up to the programmer to ensure that the index is valid. \par
+Win32 functions that return indications of failure call SetLastError when they fail. They generally do not call \par
+SetLastError when they succeed. The TlsGetValue function is an exception to this general rule. The TlsGetValue function \par
+calls SetLastError to clear a thread's last error when it succeeds. That allows checking for the error-free retrieval of \par
+NULL values. \par
+\par
+\par
+\b TLSFREE\par
+\b0 he TlsFree function releases a thread local storage (TLS) index, making it available for reuse. \par
+\par
+BOOL TlsFree(\par
+\par
+    DWORD  dwTlsIndex \tab // TLS index to free  \par
+   );\tab\par
+Parameters\par
+\par
+dwTlsIndex\par
+\par
+Specifies a TLS index that was allocated by the TlsAlloc function. \par
+\par
+Return Value\par
+\par
+If the function succeeds, the return value is TRUE.\par
+If the function fails, the return value is FALSE. To get extended error information, call GetLastError. \par
+\par
+Remarks\par
+\par
+If the threads of the process have allocated dynamic storage and used the TLS index to store pointers to this storage, \par
+they should free the storage before calling TlsFree. The TlsFree function does not free any dynamic storage that has been \par
+associated with the TLS index. It is expected that DLLs call this function (if at all) only during their process detach \par
+routine. \par
+\par
+}
+ 
